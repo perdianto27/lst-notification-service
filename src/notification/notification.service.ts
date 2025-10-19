@@ -8,22 +8,43 @@ export class NotificationService implements OnModuleInit {
   constructor(private readonly rabbitmq: RabbitmqService) {}
 
   async onModuleInit() {
-    // Subscribe ke event inventory.updated
+    // Tunggu koneksi RabbitMQ siap
     await this.waitForRabbitMQ();
 
+    // ✅ Subscribe ke event inventory.updated
     this.rabbitmq
       .subscribe(
         'inventory-exchange',
         'inventory.updated',
-        'notification-listener', // queue name
+        'notification-inventory-updated', // queue name
         (msg) => this.handleInventoryUpdated(msg),
       )
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(`❌ Failed to subscribe: ${message}`);
+        this.logger.error(
+          `❌ Failed to subscribe inventory.updated: ${message}`,
+        );
+      });
+
+    // ✅ Subscribe ke event inventory.failed
+    this.rabbitmq
+      .subscribe(
+        'inventory-exchange',
+        'inventory.failed',
+        'notification-inventory-failed', // queue name
+        (msg) => this.handleInventoryFailed(msg),
+      )
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `❌ Failed to subscribe inventory.failed: ${message}`,
+        );
       });
   }
 
+  /**
+   * Tunggu koneksi RabbitMQ sebelum melakukan subscribe
+   */
   private async waitForRabbitMQ(retries = 10, delayMs = 500) {
     for (let i = 0; i < retries; i++) {
       if (this.rabbitmq['channel']) return;
@@ -38,6 +59,14 @@ export class NotificationService implements OnModuleInit {
 
     this.logger.log(
       `📣 Order successfully processed for user ${userId}, item ${itemId}, new stock: ${newStock}`,
+    );
+  }
+
+  private async handleInventoryFailed(data: any): Promise<void> {
+    const { itemId, userId, reason } = data;
+
+    this.logger.warn(
+      `⚠️ Inventory failed for user ${userId}, item ${itemId}. Reason: ${reason}`,
     );
   }
 }
